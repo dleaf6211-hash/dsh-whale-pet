@@ -1,0 +1,54 @@
+{
+  "name": "dsh-whale-pet",
+  "version": "1.0.0",
+  "description": "Whale girl desktop pet for DeepSeek Harness: browser floating mascot + Windows desktop pet, balance watching, task notices, 19 voiced lines with per-line emotion, head-pat interaction and presence-aware idle speech.",
+  "type": "module",
+  "main": "lib/index.js",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dleaf6211-hash/dsh-whale-pet.git"
+  },
+  "keywords": [
+    "deepseek",
+    "harness",
+    "dsh",
+    "dsh-plugin",
+    "desktop-pet",
+    "mascot",
+    "whale"
+  ],
+  "scripts": {
+    "build:assets": "node scripts/build-assets.mjs",
+    "check": "node --check lib/index.js && node --check client/client.js",
+    "test": "node test/host-smoke.mjs"
+  },
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./client/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": ">=4.0.0-rc.0 <4.0.1 || >=4.0.1-rc.0 <4.0.2-0 || >=4.1.0 <5.0.0-0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [],
+      "platform": "web"
+    }
+  },
+  "files": [
+    "lib",
+    "client",
+    "assets",
+    "test",
+    "cordis.patch.yml",
+    "screenshots.json",
+    "README.md",
+    "LICENSE"
+  ]
+}
