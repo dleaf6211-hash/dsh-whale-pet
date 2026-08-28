@@ -19,4 +19,4 @@ echo "=== 发布 ==="
 "$NPM" publish
 
 echo ""
-echo "=== 完成!验证: npm view dsh-whale-pet ==="
+echo "=== 完成!验证: npm view dsh-whale-pet-plugin ==="

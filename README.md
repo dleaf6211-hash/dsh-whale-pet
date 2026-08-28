@@ -19,7 +19,7 @@
 ```sh
 dsh plugin add github:dleaf6211-hash/dsh-whale-pet
 # 或
-dsh plugin --profile web add dsh-whale-pet
+dsh plugin --profile web add dsh-whale-pet-plugin
 ```
 
 安装后重启 Harness（或对应 profile）即可看到浏览器右下角的鲸鱼娘。桌面桌宠自动拉起；可在设置中关闭。
