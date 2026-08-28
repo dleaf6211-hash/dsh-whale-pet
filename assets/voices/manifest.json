@@ -1,0 +1,147 @@
+{
+  "lines": [
+    {
+      "id": 0,
+      "kind": "idle",
+      "text": "今天也是元气满满的一天！",
+      "instruct": "用元气满满的欢快语气说",
+      "file": "voices/line-00.wav"
+    },
+    {
+      "id": 1,
+      "kind": "idle",
+      "text": "余额我盯着呢，安心写代码~",
+      "instruct": "用温柔可靠的大姐姐语气说",
+      "file": "voices/line-01.wav"
+    },
+    {
+      "id": 2,
+      "kind": "idle",
+      "text": "任务完成时记得夸夸我哦",
+      "instruct": "用俏皮撒娇、期待被表扬的语气说",
+      "file": "voices/line-02.wav"
+    },
+    {
+      "id": 3,
+      "kind": "idle",
+      "text": "需要帮忙就戳戳我~",
+      "instruct": "用温柔贴心的语气说",
+      "file": "voices/line-03.wav"
+    },
+    {
+      "id": 4,
+      "kind": "idle",
+      "text": "我在悄悄监督你…开玩笑啦！",
+      "instruct": "先用神秘的小声说，再俏皮地笑出来",
+      "file": "voices/line-04.wav"
+    },
+    {
+      "id": 5,
+      "kind": "idle",
+      "text": "休息一下喝口水嘛",
+      "instruct": "用温柔关心的语气说",
+      "file": "voices/line-05.wav"
+    },
+    {
+      "id": 6,
+      "kind": "idle",
+      "text": "敲累了就看看我充充电~",
+      "instruct": "用软萌安慰的语气说",
+      "file": "voices/line-06.wav"
+    },
+    {
+      "id": 7,
+      "kind": "idle",
+      "text": "新任务交给我盯梢！",
+      "instruct": "用干劲十足、拍胸脯的语气说",
+      "file": "voices/line-07.wav"
+    },
+    {
+      "id": 8,
+      "kind": "idle",
+      "text": "嘿嘿，我会一直陪着你",
+      "instruct": "用温柔坚定又带点害羞的语气说",
+      "file": "voices/line-08.wav"
+    },
+    {
+      "id": 9,
+      "kind": "idle",
+      "text": "余额充足，请继续工作！",
+      "instruct": "用元气满满、精神抖擞的语气说",
+      "file": "voices/line-09.wav"
+    },
+    {
+      "id": 10,
+      "kind": "idle",
+      "text": "要不要听我讲个冷笑话？还是算了…",
+      "instruct": "用俏皮的语气说，后半句小声放弃",
+      "file": "voices/line-10.wav"
+    },
+    {
+      "id": 11,
+      "kind": "idle",
+      "text": "冲鸭！今天也要努力产出！",
+      "instruct": "用超级元气的呐喊语气说",
+      "file": "voices/line-11.wav"
+    },
+    {
+      "id": 12,
+      "kind": "idle",
+      "text": "木牌归我，字归你，配合满分~",
+      "instruct": "用得意傲娇的语气说",
+      "file": "voices/line-12.wav"
+    },
+    {
+      "id": 13,
+      "kind": "idle",
+      "text": "我刚刚数了数，你又变强了一点",
+      "instruct": "用小声欣慰的语气说",
+      "file": "voices/line-13.wav"
+    },
+    {
+      "id": 14,
+      "kind": "pat",
+      "text": "诶嘿嘿~摸头杀~",
+      "instruct": "用害羞又带点开心的语气说",
+      "file": "voices/line-14.wav"
+    },
+    {
+      "id": 15,
+      "kind": "pat",
+      "text": "再摸一下也没关系啦",
+      "instruct": "用温柔撒娇的语气说",
+      "file": "voices/line-15.wav"
+    },
+    {
+      "id": 16,
+      "kind": "pat",
+      "text": "被摸头了~有点害羞",
+      "instruct": "用非常小声的害羞语气轻声说",
+      "speed": 0.85,
+      "gain": 0.75,
+      "file": "voices/line-16.wav"
+    },
+    {
+      "id": 17,
+      "kind": "pat",
+      "text": "才、才不是因为开心呢！",
+      "instruct": "用傲娇嘴硬的语气说",
+      "file": "voices/line-17.wav"
+    },
+    {
+      "id": 18,
+      "kind": "pat",
+      "text": "嘿嘿~最喜欢被摸头~",
+      "instruct": "用开心幸福的语气说",
+      "file": "voices/line-18.wav"
+    }
+  ],
+  "noticeStatuses": [
+    "completed",
+    "failed",
+    "interrupted",
+    "needs_help",
+    "low_balance",
+    "approval"
+  ]
+}
