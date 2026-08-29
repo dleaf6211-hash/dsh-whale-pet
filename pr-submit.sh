@@ -10,9 +10,25 @@ rm -rf "$WORK"
 mkdir -p "$WORK"
 cd "$WORK"
 
-echo "=== 克隆官方仓库(用你的 fork 地址,下面默认是你自己的 fork)==="
-git clone https://github.com/dleaf6211-hash/awesome-dsh-plugin.git .
+echo "=== 前置检查:你的 fork 是否已存在(不存在会 clone 失败)==="
+FORkURL="https://github.com/dleaf6211-hash/awesome-dsh-plugin.git"
+HTTPCODE=$(curl -s -o /dev/null -w "%{http_code}" https://github.com/dleaf6211-hash/awesome-dsh-plugin)
+if [ "$HTTPCODE" != "200" ]; then
+  echo ""
+  echo "❌ 还没 Fork! 请先在浏览器打开下面链接点右上角 Fork:"
+  echo "   https://github.com/awesome-dsh-plugin/awesome-dsh-plugin"
+  echo "   Fork 完成后再重新运行本脚本"
+  exit 1
+fi
+
+echo "=== 克隆你的 fork ==="
+git clone "$FORkURL" .
 git remote add upstream https://github.com/awesome-dsh-plugin/awesome-dsh-plugin.git
+
+echo "=== 同步上游最新(避免 fork 落后导致 PR 冲突)==="
+git fetch upstream
+git checkout main
+git merge --ff-only upstream/main
 
 echo "=== 建分支 ==="
 git checkout -b add-dsh-whale-pet

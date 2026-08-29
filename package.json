@@ -1,6 +1,6 @@
 {
   "name": "dsh-whale-pet-plugin",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Whale girl desktop pet for DeepSeek Harness: browser floating mascot + Windows desktop pet, balance watching, task notices, 19 voiced lines with per-line emotion, head-pat interaction and presence-aware idle speech.",
   "type": "module",
   "main": "lib/index.js",
@@ -25,6 +25,7 @@
   },
   "exports": {
     ".": "./lib/index.js",
+    "./index.js": "./lib/index.js",
     "./client": "./client/client.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
@@ -37,7 +38,9 @@
       "patch": "./cordis.patch.yml"
     },
     "client": {
-      "inject": [],
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime"
+      ],
       "platform": "web"
     }
   },

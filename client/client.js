@@ -2,7 +2,7 @@
  * dsh-whale-pet 浏览器客户端（vanilla DOM,无 React,无构建步骤）
  * 自包含于 __ModuleLoader__ 工厂格式;宿主通信走 /api/dsh-whale-pet/* 路由。
  */
-window.__ModuleLoader__.load({ id: "dsh-whale-pet", factory: function (require) {
+window.__ModuleLoader__.load({ id: "dsh-whale-pet-plugin", factory: function (require) {
   var module = { exports: {} }
   var exports = module.exports
 
