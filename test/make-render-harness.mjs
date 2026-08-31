@@ -33,6 +33,7 @@ const fixtures = {
   '/api/dsh-whale-pet/notice-voices': { ok: true, voices: {} },
   '/api/dsh-whale-pet/desktop-toggle': { ok: true, alive: false },
 }
+const assetSkin4 = { ok: true, skin: 4, base64: skin4, mime: 'image/png', size: skin4.length, w: 300, h: 300 }
 
 const html = `<!doctype html>
 <html>
@@ -50,8 +51,14 @@ const html = `<!doctype html>
 window.__petModule = null
 window.__ModuleLoader__ = { load: function (x) { window.__petModule = x.factory(); } }
 var FIXTURES = ${JSON.stringify(fixtures)}
-window.fetch = function (path) {
+var ASSET_SKIN4 = ${JSON.stringify(assetSkin4)}
+window.fetch = function (path, init) {
   var body = FIXTURES[path] || { ok: true }
+  if (path === '/api/dsh-whale-pet/asset') {
+    var reqBody = {}
+    try { if (init && init.body) reqBody = JSON.parse(init.body) } catch (e) {}
+    body = reqBody.skin === 4 ? ASSET_SKIN4 : FIXTURES[path]
+  }
   ${mode === 'notice' ? `
   if (path === '/api/dsh-whale-pet/state') {
     var item = { id: 43, status: 'completed', kind: 'agent', title: '完成WHALE交接三任务', costCny: 1.98 }

@@ -31,7 +31,7 @@ const stateJson = {
   },
 }
 writeFileSync(statePath, JSON.stringify(stateJson), 'utf8')
-writeFileSync(scriptPath, buildPetScript(statePath, cmdPath, skinPath, speechWav), 'utf8')
+writeFileSync(scriptPath, '\ufeff' + buildPetScript(statePath, cmdPath, skinPath, speechWav, ''), 'utf8')
 
 let failures = 0
 function check(name, cond) {

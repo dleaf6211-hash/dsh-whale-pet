@@ -5,6 +5,8 @@
 window.__ModuleLoader__.load({ id: "dsh-whale-pet-plugin", factory: function (require) {
   var module = { exports: {} }
   var exports = module.exports
+  var React = null
+  try { React = require('react') } catch (e) { React = null }
 
   // ---------- 常量与台词表 ----------
   var API = {
@@ -15,6 +17,7 @@ window.__ModuleLoader__.load({ id: "dsh-whale-pet-plugin", factory: function (re
     asset: '/api/dsh-whale-pet/asset',
     noticeVoices: '/api/dsh-whale-pet/notice-voices',
     desktopToggle: '/api/dsh-whale-pet/desktop-toggle',
+    topupQr: '/api/dsh-whale-pet/topup-qr',
   }
   var IDLE_LINES = [
     { t: '今天也是元气满满的一天！', i: '用元气满满的欢快语气说' },
@@ -42,12 +45,12 @@ window.__ModuleLoader__.load({ id: "dsh-whale-pet-plugin", factory: function (re
   var NOTICE_TITLES = { needs_help: '🙋 需要协助', interrupted: '⏸ 任务中断', failed: '❌ 任务失败', completed: '✅ 任务完成', approval: '⏳ 等待审批' }
   var KIND_LABEL = { subagent: '子任务', workflow: '工作流', job: '后台任务', agent: '会话任务', task: '任务' }
   var STATUS_LABEL = { needs_help: '需要协助', interrupted: '中断了', failed: '失败了', completed: '完成了', approval: '等待审批' }
-  var PET_SCALE = 0.75
 
   // ---------- 状态 ----------
   var S = {
     mode: 'balance',
     data: null,
+    settings: { idleEnabled: true, idleFrequency: 'normal', voiceEnabled: true, petScale: 0.75, autoLaunchPet: false, lowBalanceAlert: true },
     busy: false,
     notice: null,
     noticeTimer: null,
@@ -121,6 +124,7 @@ window.__ModuleLoader__.load({ id: "dsh-whale-pet-plugin", factory: function (re
   // ---------- 音频 ----------
   function playB64Audio(b64) {
     try {
+      stopSpeechAudio()
       var a = new Audio('data:audio/wav;base64,' + b64)
       a.volume = 1
       S.speechAudio = a
@@ -169,14 +173,17 @@ window.__ModuleLoader__.load({ id: "dsh-whale-pet-plugin", factory: function (re
     return args
   }
 
+  function dndActive() {
+    return !!(S.data && S.data.dnd === true)
+  }
   function sayLine(item, ms) {
     if (S.speechTimer !== null) { clearTimeout(S.speechTimer); S.speechTimer = null }
     S.speech = item.t
     callApi(API.speech, speechArgs(item, ms))
-    // 浏览器只在桌面宠未接管语音时播
-    if (!(S.data && S.data.voiceEngine === 'pet')) {
+    // 浏览器只在桌面宠未接管语音时播;免打扰时段静音(文字照常)
+    if (!(S.data && S.data.voiceEngine === 'pet') && S.settings.voiceEnabled !== false && !dndActive()) {
       callApi(API.speechAudio, speechArgs(item)).then(function (r) {
-        if (r && r.ok === true && r.base64 && !(S.data && S.data.voiceEngine === 'pet') && S.notice === null) {
+        if (r && r.ok === true && r.base64 && !(S.data && S.data.voiceEngine === 'pet') && S.settings.voiceEnabled !== false && !dndActive() && S.notice === null) {
           playB64Audio(r.base64)
         }
       })
@@ -185,6 +192,8 @@ window.__ModuleLoader__.load({ id: "dsh-whale-pet-plugin", factory: function (re
   }
 
   function idleTick() {
+    if (S.settings.idleEnabled === false) return
+    if (S.data && S.data.dnd === true) return // 免打扰时段不出声
     if (S.speechTimer !== null) return
     if (S.notice !== null || S.lbMode !== null || S.busy) return
     var busy = !!(S.data && S.data.busy === true)
@@ -194,6 +203,8 @@ window.__ModuleLoader__.load({ id: "dsh-whale-pet-plugin", factory: function (re
       var present = S.presence.lastSeenAt > 0 && (Date.now() - S.presence.lastSeenAt) < 180000
       intervalMs = present ? 50000 : 120000
     }
+    if (S.settings.idleFrequency === 'quiet') intervalMs *= 2
+    else if (S.settings.idleFrequency === 'chatty') intervalMs *= 0.5
     var now = Date.now()
     if (S.tick.lastCheckAt === 0) { S.tick.lastCheckAt = now; return }
     if (now - S.tick.lastCheckAt < intervalMs) return
@@ -239,6 +250,8 @@ window.__ModuleLoader__.load({ id: "dsh-whale-pet-plugin", factory: function (re
       var item = queue[j]
       if (item && typeof item.id === 'number' && item.id > S.lastDoneId) {
         S.lastDoneId = item.id
+        // 免打扰时段:非白名单(审批/需要协助)的通知整条静默跳过
+        if (dndActive() && item.status !== 'approval' && item.status !== 'needs_help') return
         // 通知优先:取消当前台词
         if (S.speechTimer !== null) { clearTimeout(S.speechTimer); S.speechTimer = null }
         S.speech = null
@@ -255,8 +268,14 @@ window.__ModuleLoader__.load({ id: "dsh-whale-pet-plugin", factory: function (re
   function playNoticeVoice(status) {
     // 浏览器仅在桌面宠未接管语音时播
     if (S.data && S.data.voiceEngine === 'pet') return
+    if (S.settings.voiceEnabled === false) return
+    if (dndActive() && status !== 'approval' && status !== 'needs_help') return
     var v = S.voices[status]
-    if (v && v.base64) { playB64Audio(v.base64) }
+    if (!v) return
+    var list = (v.variants && v.variants.length > 0) ? v.variants : (v.base64 ? [{ base64: v.base64 }] : [])
+    if (list.length === 0) return
+    var pick = list[Math.floor(Math.random() * list.length)]
+    if (pick && pick.base64) playB64Audio(pick.base64)
   }
 
   // ---------- 低余额 ----------
@@ -271,10 +290,14 @@ window.__ModuleLoader__.load({ id: "dsh-whale-pet-plugin", factory: function (re
     S.lbQr = { ok: false }
     S.lbMode = 'qr'
     render()
+    callApi(API.topupQr, {}).then(function (r) {
+      if (r && r.ok === true && r.base64) { S.lbQr = { ok: true, base64: r.base64 }; render() }
+    })
   }
 
   // ---------- 渲染 ----------
   var rootEl, sceneEl, boardEl, titleEl, bodyEl, actionsEl, imgEl, noteEl
+  var stickerEl, heartEls
 
   function fmtMoney(v) {
     if (typeof v === 'number') return v.toFixed(2)
@@ -303,6 +326,7 @@ window.__ModuleLoader__.load({ id: "dsh-whale-pet-plugin", factory: function (re
 
   function renderBoard() {
     titleEl.textContent = ''
+    titleEl.style.color = ''
     bodyEl.innerHTML = ''
     actionsEl.innerHTML = ''
     var d = S.data || {}
@@ -310,6 +334,8 @@ window.__ModuleLoader__.load({ id: "dsh-whale-pet-plugin", factory: function (re
     if (S.notice !== null) {
       var n = S.notice
       titleEl.textContent = NOTICE_TITLES[n.status] || '📢 任务通知'
+      var NC = { failed: '#C0392B', interrupted: '#B9770E', needs_help: '#B9770E' }
+      titleEl.style.color = NC[n.status] || ''
       var t = String(n.title || '')
       if (t.length > 11) t = t.slice(0, 11) + '…'
       var big = el('div', 'whale-big')
@@ -352,6 +378,7 @@ window.__ModuleLoader__.load({ id: "dsh-whale-pet-plugin", factory: function (re
       if (S.lbQr && S.lbQr.base64) img.src = 'data:image/png;base64,' + S.lbQr.base64
       bodyEl.appendChild(img)
       bodyEl.appendChild(el('div', 'whale-empty', (S.lbAmount ? '金额 ¥' + S.lbAmount + ' · ' : '') + '支付宝/微信扫码'))
+      if (!(S.lbQr && S.lbQr.base64)) bodyEl.appendChild(el('div', 'whale-empty', '二维码加载失败,请直接访问平台充值页'))
       bodyEl.appendChild(el('div', 'whale-empty', 'platform.deepseek.com/top_up'))
       actionsEl.appendChild(btn('返回', null, dismissLowBalance))
       return
@@ -375,25 +402,35 @@ window.__ModuleLoader__.load({ id: "dsh-whale-pet-plugin", factory: function (re
         if (d.realMonthlyCost && typeof d.realMonthlyCost.totalCny === 'number') bodyEl.appendChild(row('本月消耗', '¥' + fmtCost(d.realMonthlyCost.totalCny)))
         else if (d.monthlyUsage && typeof d.monthlyUsage.costCny === 'number') bodyEl.appendChild(row('本月消耗', '≈¥' + fmtCost(d.monthlyUsage.costCny)))
         if (d.costDiff && typeof d.costDiff.diff === 'number' && isFinite(d.costDiff.diff)) bodyEl.appendChild(row('消耗差值', '≈¥' + fmtCost(Math.max(0, d.costDiff.diff))))
+        else if (!d.costDiff || d.costDiff.diff === null || d.costDiff.diff === undefined) bodyEl.appendChild(row('消耗差值', '—'))
       } else {
         bodyEl.appendChild(el('div', 'whale-empty', (d.balanceError || '余额加载中…')))
       }
     } else {
       titleEl.textContent = '🐳 Tokens'
       var u = d.usage || {}
-      bodyEl.appendChild(row('模型调用', String(u.calls || 0)))
+      bodyEl.appendChild(row('模型调用次数', String(u.calls || 0)))
       bodyEl.appendChild(row('输入 tokens', String(u.inputTokens || 0)))
       bodyEl.appendChild(row('输出 tokens', String(u.outputTokens || 0)))
       bodyEl.appendChild(row('缓存读取', String(u.cacheReadTokens || 0)))
     }
     if (S.notice === null && S.lbMode === null) {
       actionsEl.appendChild(btn(S.mode === 'balance' ? '看用量' : '看余额', null, function () { S.mode = S.mode === 'balance' ? 'usage' : 'balance'; render() }))
-      actionsEl.appendChild(btn('拉起桌宠', null, function () {
+      // 单向拉起:桌宠运行时点击只提示,绝不反向关闭(关闭请用桌宠自己的 X)
+      var petAlive = !!(S.data && S.data.voiceEngine === 'pet')
+      actionsEl.appendChild(btn(petAlive ? '桌宠运行中' : '拉起桌宠', null, function () {
+        if (petAlive) {
+          S.petNote = '桌宠运行中 ✓'
+          render()
+          setTimeout(function () { S.petNote = null; render() }, 3000)
+          return
+        }
         S.petNote = '拉起中…'
         render()
         callApi(API.desktopToggle, {}).then(function (r) {
           S.petNote = r && r.ok === true ? '桌宠已拉起 ✓' : '拉起失败'
           render()
+          refreshState()
           setTimeout(function () { S.petNote = null; render() }, 3000)
         })
       }))
@@ -411,7 +448,7 @@ window.__ModuleLoader__.load({ id: "dsh-whale-pet-plugin", factory: function (re
   function render() {
     if (rootEl === undefined) return
     renderBoard()
-    rootEl.style.transform = 'scale(' + PET_SCALE + ') translate(' + S.pos.x + 'px, ' + S.pos.y + 'px)'
+    rootEl.style.transform = 'scale(' + S.settings.petScale + ') translate(' + S.pos.x + 'px, ' + S.pos.y + 'px)'
     // 立绘
     if (S.skins.main && S.skins.main.base64) {
       imgEl.src = 'data:image/png;base64,' + S.skins.main.base64
@@ -419,24 +456,34 @@ window.__ModuleLoader__.load({ id: "dsh-whale-pet-plugin", factory: function (re
     } else {
       imgEl.style.display = 'none'
     }
-    // 爱心
-    var oldHearts = sceneEl.querySelectorAll('.whale-heart')
-    for (var i = 0; i < oldHearts.length; i++) oldHearts[i].remove()
+    // 爱心(元素稳定:按 id 缓存,不反复重建/重播动画)
+    if (heartEls === undefined) heartEls = {}
+    var alive = {}
     for (var j = 0; j < S.patHearts.length; j++) {
       var h = S.patHearts[j]
-      var hn = el('span', 'whale-heart', h.emoji)
-      hn.style.left = h.left + 'px'
-      hn.style.top = h.top + 'px'
-      sceneEl.appendChild(hn)
+      alive[h.id] = true
+      if (!heartEls[h.id]) {
+        var hn = el('span', 'whale-heart', h.emoji)
+        hn.style.left = h.left + 'px'
+        hn.style.top = h.top + 'px'
+        sceneEl.appendChild(hn)
+        heartEls[h.id] = hn
+      }
     }
-    // 害羞贴纸
-    var oldSt = sceneEl.querySelector('.whale-pat-sticker')
-    if (oldSt) oldSt.remove()
+    for (var hid in heartEls) {
+      if (!alive[hid]) { try { heartEls[hid].remove() } catch (e) { /* ignore */ }; delete heartEls[hid] }
+    }
+    // 害羞贴纸(元素稳定:只在出现/消失时创建/移除,不反复触发 pop 动画)
     if (S.patStickerOn && S.skins.sticker && S.skins.sticker.base64) {
-      var st = el('img', 'whale-pat-sticker')
-      st.src = 'data:image/png;base64,' + S.skins.sticker.base64
-      st.style.cssText = 'left:128px;top:36px;width:150px;height:150px;'
-      sceneEl.appendChild(st)
+      if (stickerEl === undefined) {
+        stickerEl = el('img', 'whale-pat-sticker')
+        stickerEl.src = 'data:image/png;base64,' + S.skins.sticker.base64
+        stickerEl.style.cssText = 'left:128px;top:36px;width:150px;height:150px;'
+        sceneEl.appendChild(stickerEl)
+      }
+    } else if (stickerEl !== undefined) {
+      try { stickerEl.remove() } catch (e) { /* ignore */ }
+      stickerEl = undefined
     }
     // petNote
     noteEl.textContent = S.petNote || ''
@@ -448,6 +495,7 @@ window.__ModuleLoader__.load({ id: "dsh-whale-pet-plugin", factory: function (re
     callApi(API.state, {}).then(function (s) {
       if (!s || s.ok !== true) return
       S.data = s
+      if (s.settings && typeof s.settings === 'object') S.settings = s.settings
       if (s.taskQueue) processQueue(s.taskQueue)
       if (s.lowBalance && s.lowBalance.active === true && typeof s.lowBalance.version === 'number' && s.lowBalance.version > S.lbHandledVersion) {
         S.lbHandledVersion = s.lowBalance.version
@@ -551,8 +599,121 @@ window.__ModuleLoader__.load({ id: "dsh-whale-pet-plugin", factory: function (re
     setInterval(idleTick, 10000)
   }
 
+  // ---------- 设置卡片(设置 → 插件 → 鲸鱼娘桌宠) ----------
+  var SETTINGS_CSS = [
+    '.ws-card{border:1px solid var(--dsw-alias-border-l2,#e5e7eb);background:var(--dsw-alias-bg-layer-3,#fff);border-radius:12px;transition:border-color .16s,background .16s}',
+    '.ws-card:hover{border-color:var(--dsw-alias-label-dimmed,#c8ccd4)}',
+    '.ws-card.open{background:var(--dsw-alias-bg-layer-2,#f7f8fa);border-color:var(--dsw-alias-label-dimmed,#c8ccd4)}',
+    '.ws-header{appearance:none;width:100%;font:inherit;color:inherit;text-align:left;cursor:pointer;background:0 0;border:0;border-radius:12px;align-items:center;gap:12px;padding:14px 16px;display:flex}',
+    '.ws-header:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#4f6ef7);outline-offset:-2px}',
+    '.ws-headtext{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}',
+    '.ws-name{color:var(--dsw-alias-label-primary,#1f2328);font-size:15px;font-weight:600;line-height:1.4}',
+    '.ws-version{color:var(--dsw-alias-label-tertiary,#8b93a1);font-size:12px;font-weight:400;margin-left:6px}',
+    '.ws-desc{color:var(--dsw-alias-label-tertiary,#8b93a1);font-size:13px;line-height:1.5}',
+    '.ws-chevron{color:var(--dsw-alias-label-tertiary,#8b93a1);flex:none;display:inline-flex;transition:transform .16s}',
+    '.ws-chevron.open{transform:rotate(180deg)}',
+    '.ws-body{border-top:1px solid var(--dsw-alias-border-l2,#e5e7eb);margin:0 16px;padding-bottom:8px}',
+    '.ws-row{display:flex;align-items:center;gap:12px;padding:12px 0}',
+    '.ws-row+.ws-row{border-top:1px solid var(--dsw-alias-border-l2,#e5e7eb)}',
+    '.ws-labelbox{display:flex;flex-direction:column;gap:3px;flex:1;min-width:0}',
+    '.ws-label{font-size:13px;line-height:20px;color:var(--dsw-alias-label-primary,#1f2328)}',
+    '.ws-hint{font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary,#8b93a1)}',
+    '.ws-switch{position:relative;width:36px;height:20px;border-radius:999px;background:var(--dsw-alias-border-l1);cursor:pointer;flex:none}',
+    '.ws-switch::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .15s ease}',
+    '.ws-switch.on{background:var(--dsw-alias-brand-primary)}',
+    '.ws-switch.on::after{transform:translateX(16px)}',
+    '.ws-select{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);border:1px solid var(--dsw-alias-border-l1);border-radius:8px;padding:5px 8px;font-size:13px;outline:none}',
+    '.ws-range{flex:none;width:120px}',
+    '.ws-scale{font-size:12px;color:var(--dsw-alias-label-tertiary,#8b93a1);min-width:38px;text-align:right}',
+    '.ws-note{font-size:12px;color:var(--dsw-alias-label-tertiary,#8b93a1);padding:2px 0}',
+  ].join('\n')
+  function SettingsCard() {
+    var h = React.createElement
+    var [open, setOpen] = React.useState(false)
+    var [cfg, setCfg] = React.useState(null)
+    var [note, setNote] = React.useState('')
+    var load = function () {
+      fetch('/api/dsh-whale-pet/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+        .then(function (r) { return r.json() })
+        .then(function (j) { if (j && j.ok && j.settings) setCfg(j.settings) })
+        .catch(function () {})
+    }
+    React.useEffect(function () { load() }, [])
+    var save = function (patch) {
+      var next = Object.assign({}, cfg || {}, patch || {})
+      setCfg(next)
+      fetch('/api/dsh-whale-pet/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings: next }) })
+        .then(function (r) { return r.json() })
+        .then(function (j) { setNote(j && j.ok ? '已保存 ✓(台词/语音/大小立即生效,自动拉起下次重启生效)' : '保存失败') })
+        .catch(function () { setNote('保存失败') })
+    }
+    var sw = function (key, label, hint) {
+      return h('div', { className: 'ws-row' },
+        h('div', { className: 'ws-labelbox' },
+          h('div', { className: 'ws-label' }, label),
+          hint ? h('div', { className: 'ws-hint' }, hint) : null),
+        h('div', { className: 'ws-switch' + (cfg && cfg[key] ? ' on' : ''), onClick: function () { save({ [key]: !cfg[key] }) } }))
+    }
+    var rows = cfg === null ? [h('div', { className: 'ws-row' }, h('div', { className: 'ws-hint' }, '加载中…'))] : [
+      sw('idleEnabled', '随机台词', '空闲时鲸鱼娘主动说话'),
+      h('div', { className: 'ws-row' },
+        h('div', { className: 'ws-labelbox' },
+          h('div', { className: 'ws-label' }, '台词频率'),
+          h('div', { className: 'ws-hint' }, '安静 = 间隔加倍,活泼 = 减半')),
+        h('select', { className: 'ws-select', value: cfg.idleFrequency, onChange: function (e) { save({ idleFrequency: e.target.value }) } },
+          h('option', { value: 'quiet' }, '安静'),
+          h('option', { value: 'normal' }, '标准'),
+          h('option', { value: 'chatty' }, '活泼'))),
+      sw('voiceEnabled', '语音朗读', '台词与任务通知的语音'),
+      h('div', { className: 'ws-row' },
+        h('div', { className: 'ws-labelbox' },
+          h('div', { className: 'ws-label' }, '浏览器宠大小'),
+          h('div', { className: 'ws-hint' }, '60% ~ 120%')),
+        h('input', { className: 'ws-range', type: 'range', min: '0.6', max: '1.2', step: '0.05', value: cfg.petScale, onChange: function (e) { save({ petScale: parseFloat(e.target.value) }) } }),
+        h('span', { className: 'ws-scale' }, Math.round(cfg.petScale * 100) + '%')),
+      sw('autoLaunchPet', '自动拉起桌面宠', 'DSH 启动时自动出现桌面宠(默认关,靠木牌「拉起桌宠」)'),
+      sw('lowBalanceAlert', '低余额提醒', '余额低于 5 元时提醒充值'),
+      sw('dndEnabled', '免打扰时段', '时段内静音、不弹气泡;审批与「需要协助」仍会提醒'),
+      h('div', { className: 'ws-row' },
+        h('div', { className: 'ws-labelbox' },
+          h('div', { className: 'ws-label' }, '免打扰时间'),
+          h('div', { className: 'ws-hint' }, '支持跨午夜(如 22:00 – 09:00)')),
+        h('input', { className: 'ws-select', type: 'time', value: cfg.dndStart, onChange: function (e) { save({ dndStart: e.target.value }) } }),
+        h('span', { className: 'ws-scale' }, '–'),
+        h('input', { className: 'ws-select', type: 'time', value: cfg.dndEnd, onChange: function (e) { save({ dndEnd: e.target.value }) } })),
+      note ? h('div', { className: 'ws-row' }, h('div', { className: 'ws-note' }, note)) : null,
+    ]
+    return h('div', { className: open ? 'ws-card open' : 'ws-card' },
+      h('button', { type: 'button', className: 'ws-header', 'aria-expanded': open, onClick: function () { setOpen(!open) } },
+        h('div', { className: 'ws-headtext' },
+          h('div', { className: 'ws-name' }, '鲸鱼娘桌宠', h('span', { className: 'ws-version' }, 'v1.0.3')),
+          h('div', { className: 'ws-desc' }, '台词、语音、大小与桌面宠拉起行为')),
+        h('span', { className: open ? 'ws-chevron open' : 'ws-chevron' },
+          h('svg', { viewBox: '0 0 14 14', width: 14, height: 14, style: { display: 'block' } },
+            h('path', { d: 'M3 5.5 7 9.5 11 5.5', fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' })))),
+      open ? h('div', { className: 'ws-body' }, rows) : null)
+  }
+  function registerSettingsCard(ctx) {
+    var slots = ctx && typeof ctx.get === 'function' ? ctx.get('slots') : undefined
+    if (!slots || typeof slots.inject !== 'function' || typeof slots.register !== 'function') return
+    try {
+      var styleEl = document.createElement('style')
+      styleEl.textContent = SETTINGS_CSS
+      document.head.appendChild(styleEl)
+      slots.inject('settings.plugin.item', function () {
+        return slots.register(
+          { name: 'settings.plugin.item', id: 'dsh-whale-pet-plugin', order: 40, label: '鲸鱼娘桌宠' },
+          function () { return React.createElement(SettingsCard, null) }
+        )
+      })
+    } catch (e) { /* 注册失败绝不让 GUI 启动崩掉 */ }
+  }
+
+  // (输入框互动入口已按用户反馈移除——桌宠本体可直接摸/点,按钮面板冗余)
+
   function apply(ctx) {
     mount()
+    if (React !== null) registerSettingsCard(ctx)
     // 测试钩子:渲染测试页可通过 window.__whale 直接触发摸头/通知,验证贴纸/爱心/台词/通知视图
     if (typeof window !== 'undefined' && window.__WHALE_TEST__ === true) {
       window.__whale = {
