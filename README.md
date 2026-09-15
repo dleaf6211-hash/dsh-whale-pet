@@ -103,6 +103,10 @@ dsh plugin add github:dleaf6211-hash/dsh-whale-pet
 - Windows(桌面宠基于 PowerShell + WPF;浏览器宠任意系统可用)
 - DeepSeek Harness (dsh)
 
+## 🐛 问题反馈
+
+欢迎任何反馈!到 [Issues](https://github.com/dleaf6211-hash/dsh-whale-pet/issues) 提交(有现成模板)。**请务必注明你的 DSH 宿主版本**(`npm ls @deepseek-ai/dsh`)——不同宿主版本的 API 差异会影响问题定位,注明版本能让我们少绕很多弯路。
+
 ## 📄 License
 
 MIT

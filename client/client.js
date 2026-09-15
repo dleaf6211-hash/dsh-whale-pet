@@ -5,8 +5,9 @@
 window.__ModuleLoader__.load({ id: "dsh-whale-pet-plugin", factory: function (require) {
   var module = { exports: {} }
   var exports = module.exports
-  var React = null
-  try { React = require('react') } catch (e) { React = null }
+  // v3:设置卡改为零 React 依赖(不再 require('react'))。
+  // 原因(双机实锤):0.1.1/0.1.5 的模块表都不保证提供裸 'react'(boot 图无 react 行、window.React 无人设置),
+  // 旧版「拿不到 React 就静默跳过注册」= 设置面板卡片无声消失。
 
   // ---------- 常量与台词表 ----------
   var API = {
@@ -18,6 +19,8 @@ window.__ModuleLoader__.load({ id: "dsh-whale-pet-plugin", factory: function (re
     noticeVoices: '/api/dsh-whale-pet/notice-voices',
     desktopToggle: '/api/dsh-whale-pet/desktop-toggle',
     topupQr: '/api/dsh-whale-pet/topup-qr',
+    announce: '/api/dsh-whale-pet/announce',
+    displayAck: '/api/dsh-whale-pet/display/ack',
   }
   var IDLE_LINES = [
     { t: '今天也是元气满满的一天！', i: '用元气满满的欢快语气说' },
@@ -95,6 +98,7 @@ window.__ModuleLoader__.load({ id: "dsh-whale-pet-plugin", factory: function (re
       '.whale-row .k { color: #2b1c0e; text-shadow: 0 0 2px rgba(255,255,255,0.9); }',
       '.whale-row .v { color: #0f0a04; text-shadow: 0 0 2px rgba(255,255,255,0.9); max-width: 112px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }',
       '.whale-empty { color: #2b1c0e; font-size: 9px; line-height: 1.15; text-align: center; }',
+      '.whale-remark { color: #5c3d10; font-size: 10px; font-weight: 700; line-height: 1.2; text-align: center; margin-top: 3px; }',
       '.whale-board-actions { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; }',
       '.whale-btn { flex: 1; min-width: 26px; min-height: 15px; font-size: 9.5px; line-height: 1.15; font-weight: 700; padding: 1px 2px; border-radius: 6px; border: 1.5px solid rgba(90,60,25,0.75); background: rgba(255,252,240,0.92); color: #2b1c0e; cursor: pointer; font-family: inherit; }',
       '.whale-btn:hover { background: #fff6e0; }',
@@ -176,7 +180,7 @@ window.__ModuleLoader__.load({ id: "dsh-whale-pet-plugin", factory: function (re
   function dndActive() {
     return !!(S.data && S.data.dnd === true)
   }
-  function sayLine(item, ms) {
+  function proceedSayLine(item, ms) {
     if (S.speechTimer !== null) { clearTimeout(S.speechTimer); S.speechTimer = null }
     S.speech = item.t
     callApi(API.speech, speechArgs(item, ms))
@@ -189,6 +193,19 @@ window.__ModuleLoader__.load({ id: "dsh-whale-pet-plugin", factory: function (re
       })
     }
     S.speechTimer = setTimeout(function () { S.speechTimer = null; S.speech = null; render() }, ms)
+  }
+
+  function sayLine(item, ms, reportKind) {
+    var kb = reportKind === 'headpat' ? 'headpat' : 'line'
+    // D12(2026-09-14):先问宿主仲裁,再决定本地渲染与 TTS——
+    // 被丢弃(suppressed)的台词不再显示、不再白跑一次 TTS;已有气泡不受影响;
+    // 路由不可达时维持旧的本地降级行为。
+    callApi(API.announce, { kind: kb, text: item.t })
+      .then(function (r) {
+        if (!r || r.accepted !== true) return
+        proceedSayLine(item, ms)
+      })
+      .catch(function () { proceedSayLine(item, ms) })
   }
 
   function idleTick() {
@@ -218,7 +235,7 @@ window.__ModuleLoader__.load({ id: "dsh-whale-pet-plugin", factory: function (re
 
   function triggerPat() {
     var item = pickLine(PAT_LINES, 'pat')
-    sayLine(item, 4500)
+    sayLine(item, 4500, 'headpat')
     S.patStickerOn = true
     setTimeout(function () { S.patStickerOn = false; render() }, 2400)
     var hearts = []
@@ -346,7 +363,16 @@ window.__ModuleLoader__.load({ id: "dsh-whale-pet-plugin", factory: function (re
       if (n.status !== 'needs_help' && n.status !== 'approval' && typeof n.costCny === 'number') {
         bodyEl.appendChild(row('消耗金额', '≈¥' + fmtCost(n.costCny)))
       }
-      actionsEl.appendChild(btn('知道了', null, function () { if (S.noticeTimer) clearTimeout(S.noticeTimer); S.notice = null; S.noticeTimer = null; render() }))
+      actionsEl.appendChild(btn('知道了', null, function () {
+        if (S.noticeTimer) clearTimeout(S.noticeTimer)
+        S.notice = null
+        S.noticeTimer = null
+        // 窝 2:宿主调度器 ack(「知道了」= dismiss,队列可推进)
+        if (d.display && d.display.current && typeof d.display.current.seq === 'number') {
+          callApi(API.displayAck, { seq: d.display.current.seq, kind: 'dismiss' }).catch(function () {})
+        }
+        render()
+      }))
       return
     }
     if (S.lbMode === 'prompt') {
@@ -406,6 +432,19 @@ window.__ModuleLoader__.load({ id: "dsh-whale-pet-plugin", factory: function (re
       } else {
         bodyEl.appendChild(el('div', 'whale-empty', (d.balanceError || '余额加载中…')))
       }
+    } else if (S.mode === 'efficiency') {
+      titleEl.textContent = '🐳 效率'
+      var e = d.efficiency || {}
+      var st = e && e.sessionTokens
+      if (st && typeof st.input === 'number') bodyEl.appendChild(row('会话 tokens 入/出', String((st.input || 0) + (st.cacheRead || 0)) + ' / ' + String(st.output || 0)))
+      var miss = st && typeof st.input === 'number' ? st.input : 0
+      var hit = st && typeof st.cacheRead === 'number' ? st.cacheRead : 0
+      bodyEl.appendChild(row('缓存 命中/未命中', String(hit) + ' / ' + String(miss)))
+      if (e && typeof e.remark === 'string' && e.remark !== '') {
+        var rk = el('div', 'whale-remark')
+        rk.textContent = e.remark
+        bodyEl.appendChild(rk)
+      }
     } else {
       titleEl.textContent = '🐳 Tokens'
       var u = d.usage || {}
@@ -415,7 +454,9 @@ window.__ModuleLoader__.load({ id: "dsh-whale-pet-plugin", factory: function (re
       bodyEl.appendChild(row('缓存读取', String(u.cacheReadTokens || 0)))
     }
     if (S.notice === null && S.lbMode === null) {
-      actionsEl.appendChild(btn(S.mode === 'balance' ? '看用量' : '看余额', null, function () { S.mode = S.mode === 'balance' ? 'usage' : 'balance'; render() }))
+      var nextMode = S.mode === 'balance' ? 'usage' : S.mode === 'usage' ? 'efficiency' : 'balance'
+      var nextLabel = nextMode === 'balance' ? '看余额' : nextMode === 'usage' ? '看用量' : '看效率'
+      actionsEl.appendChild(btn(nextLabel, null, function () { S.mode = nextMode; render() }))
       // 单向拉起:桌宠运行时点击只提示,绝不反向关闭(关闭请用桌宠自己的 X)
       var petAlive = !!(S.data && S.data.voiceEngine === 'pet')
       actionsEl.appendChild(btn(petAlive ? '桌宠运行中' : '拉起桌宠', null, function () {
@@ -554,6 +595,11 @@ window.__ModuleLoader__.load({ id: "dsh-whale-pet-plugin", factory: function (re
   // ---------- 启动 ----------
   function mount() {
     if (rootEl !== undefined) return
+    // D14:整页未刷新时,上一实例挂的根节点会残留在页面上 ⇒ 先清掉再挂,避免「两只浏览器宠」
+    try {
+      var stale = document.querySelectorAll('.whale-mascot-root')
+      for (var i = 0; i < stale.length; i++) stale[i].remove()
+    } catch (e) { /* ignore */ }
     injectStyles()
     rootEl = el('div', 'whale-mascot-root')
     sceneEl = el('div', 'whale-mascot-scene')
@@ -627,85 +673,232 @@ window.__ModuleLoader__.load({ id: "dsh-whale-pet-plugin", factory: function (re
     '.ws-scale{font-size:12px;color:var(--dsw-alias-label-tertiary,#8b93a1);min-width:38px;text-align:right}',
     '.ws-note{font-size:12px;color:var(--dsw-alias-label-tertiary,#8b93a1);padding:2px 0}',
   ].join('\n')
-  function SettingsCard() {
-    var h = React.createElement
-    var [open, setOpen] = React.useState(false)
-    var [cfg, setCfg] = React.useState(null)
-    var [note, setNote] = React.useState('')
-    var load = function () {
+  // ---------- 设置卡 v3:零 React 依赖(手造元素 + ref 回调挂原生 DOM) ----------
+  // 不再 require/import React、不用 useState/useEffect:
+  // - 根元素手造 { $$typeof: Symbol.for('react.element') } —— React 元素身份只认这个 Symbol,跨实例跨版本可渲染;
+  // - 卡内容在 ref 回调里 document.createElement 构建,状态闭包化,手动刷新 DOM;
+  // - 不挑 React 实例 ⇒ 0.1.1(list 派发)/ 0.1.5(keyed 派发)同一份代码通吃。
+  function makeSettingsCardElement() {
+    return {
+      $$typeof: Symbol.for('react.element'),
+      type: 'div',
+      key: null,
+      ref: mountSettingsCard,
+      props: {},
+    }
+  }
+
+  function mountSettingsCard(node) {
+    if (!node) return // 卸载时 React 以 null 调 ref
+
+    var S = { open: false, cfg: null, note: '' }
+
+    function make(tag, className, text) {
+      var n = document.createElement(tag)
+      if (className) n.className = className
+      if (text !== undefined && text !== null) n.textContent = text
+      return n
+    }
+
+    function chevron() {
+      var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+      svg.setAttribute('viewBox', '0 0 14 14')
+      svg.setAttribute('width', '14')
+      svg.setAttribute('height', '14')
+      svg.setAttribute('style', 'display:block')
+      var path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+      path.setAttribute('d', 'M3 5.5 7 9.5 11 5.5')
+      path.setAttribute('fill', 'none')
+      path.setAttribute('stroke', 'currentColor')
+      path.setAttribute('stroke-width', '1.6')
+      path.setAttribute('stroke-linecap', 'round')
+      path.setAttribute('stroke-linejoin', 'round')
+      svg.appendChild(path)
+      return svg
+    }
+
+    function buildRow(label, hint, control) {
+      var row = make('div', 'ws-row')
+      var lb = make('div', 'ws-labelbox')
+      lb.appendChild(make('div', 'ws-label', label))
+      if (hint) lb.appendChild(make('div', 'ws-hint', hint))
+      row.appendChild(lb)
+      if (control) row.appendChild(control)
+      return row
+    }
+
+    function sw(key, label, hint) {
+      var swt = make('div', 'ws-switch' + (S.cfg && S.cfg[key] ? ' on' : ''))
+      swt.addEventListener('click', function () {
+        var patch = {}
+        patch[key] = !(S.cfg && S.cfg[key])
+        save(patch)
+      })
+      return buildRow(label, hint, swt)
+    }
+
+    function load() {
       fetch('/api/dsh-whale-pet/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
         .then(function (r) { return r.json() })
-        .then(function (j) { if (j && j.ok && j.settings) setCfg(j.settings) })
+        .then(function (j) {
+          if (j && j.ok && j.settings) {
+            S.cfg = j.settings
+            renderBody()
+          }
+        })
         .catch(function () {})
     }
-    React.useEffect(function () { load() }, [])
-    var save = function (patch) {
-      var next = Object.assign({}, cfg || {}, patch || {})
-      setCfg(next)
+
+    function save(patch) {
+      var next = Object.assign({}, S.cfg || {}, patch || {})
+      S.cfg = next
+      S.note = '保存中…'
+      renderBody()
       fetch('/api/dsh-whale-pet/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings: next }) })
         .then(function (r) { return r.json() })
-        .then(function (j) { setNote(j && j.ok ? '已保存 ✓(台词/语音/大小立即生效,自动拉起下次重启生效)' : '保存失败') })
-        .catch(function () { setNote('保存失败') })
+        .then(function (j) {
+          S.note = j && j.ok ? '已保存 ✓(台词/语音/大小立即生效,自动拉起下次重启生效)' : '保存失败'
+          renderBody()
+        })
+        .catch(function () {
+          S.note = '保存失败'
+          renderBody()
+        })
     }
-    var sw = function (key, label, hint) {
-      return h('div', { className: 'ws-row' },
-        h('div', { className: 'ws-labelbox' },
-          h('div', { className: 'ws-label' }, label),
-          hint ? h('div', { className: 'ws-hint' }, hint) : null),
-        h('div', { className: 'ws-switch' + (cfg && cfg[key] ? ' on' : ''), onClick: function () { save({ [key]: !cfg[key] }) } }))
+
+    function renderBody() {
+      if (!bodyEl) return
+      bodyEl.textContent = ''
+      if (S.cfg === null) {
+        bodyEl.appendChild(buildRow('', '加载中…', null))
+        return
+      }
+      bodyEl.appendChild(sw('idleEnabled', '随机台词', '空闲时鲸鱼娘主动说话'))
+      bodyEl.appendChild(buildRow('台词频率', '安静 = 间隔加倍,活泼 = 减半', (function () {
+        var sel = make('select', 'ws-select')
+        var opts = [['quiet', '安静'], ['normal', '标准'], ['chatty', '活泼']]
+        for (var i = 0; i < opts.length; i++) {
+          var o = make('option', null, opts[i][1])
+          o.value = opts[i][0]
+          sel.appendChild(o)
+        }
+        sel.value = S.cfg.idleFrequency || 'normal'
+        sel.addEventListener('change', function () { save({ idleFrequency: sel.value }) })
+        return sel
+      })()))
+      bodyEl.appendChild(sw('voiceEnabled', '语音朗读', '台词与任务通知的语音'))
+      bodyEl.appendChild(buildRow('浏览器宠大小', '60% ~ 120%', (function () {
+        var rng = make('input', 'ws-range')
+        rng.type = 'range'
+        rng.min = '0.6'
+        rng.max = '1.2'
+        rng.step = '0.05'
+        rng.value = String(S.cfg.petScale || 0.75)
+        var scale = make('span', 'ws-scale', Math.round((S.cfg.petScale || 0.75) * 100) + '%')
+        rng.addEventListener('input', function () { scale.textContent = Math.round(parseFloat(rng.value) * 100) + '%' })
+        rng.addEventListener('change', function () { save({ petScale: parseFloat(rng.value) }) })
+        var wrap = make('span')
+        wrap.appendChild(rng)
+        wrap.appendChild(scale)
+        return wrap
+      })()))
+      bodyEl.appendChild(sw('autoLaunchPet', '自动拉起桌面宠', 'DSH 启动时自动出现桌面宠(默认关,靠木牌「拉起桌宠」)'))
+      bodyEl.appendChild(sw('lowBalanceAlert', '低余额提醒', '余额低于 5 元时提醒充值'))
+      bodyEl.appendChild(sw('dndEnabled', '免打扰时段', '时段内静音、不弹气泡;审批与「需要协助」仍会提醒'))
+      bodyEl.appendChild(buildRow('免打扰时间', '支持跨午夜(如 22:00 – 09:00)', (function () {
+        var start = make('input', 'ws-select')
+        start.type = 'time'
+        start.value = S.cfg.dndStart || ''
+        start.addEventListener('change', function () { save({ dndStart: start.value }) })
+        var dash = make('span', 'ws-scale', '–')
+        var end = make('input', 'ws-select')
+        end.type = 'time'
+        end.value = S.cfg.dndEnd || ''
+        end.addEventListener('change', function () { save({ dndEnd: end.value }) })
+        var wrap = make('span')
+        wrap.appendChild(start)
+        wrap.appendChild(dash)
+        wrap.appendChild(end)
+        return wrap
+      })()))
+      if (S.note) bodyEl.appendChild(buildRow('', S.note, null))
     }
-    var rows = cfg === null ? [h('div', { className: 'ws-row' }, h('div', { className: 'ws-hint' }, '加载中…'))] : [
-      sw('idleEnabled', '随机台词', '空闲时鲸鱼娘主动说话'),
-      h('div', { className: 'ws-row' },
-        h('div', { className: 'ws-labelbox' },
-          h('div', { className: 'ws-label' }, '台词频率'),
-          h('div', { className: 'ws-hint' }, '安静 = 间隔加倍,活泼 = 减半')),
-        h('select', { className: 'ws-select', value: cfg.idleFrequency, onChange: function (e) { save({ idleFrequency: e.target.value }) } },
-          h('option', { value: 'quiet' }, '安静'),
-          h('option', { value: 'normal' }, '标准'),
-          h('option', { value: 'chatty' }, '活泼'))),
-      sw('voiceEnabled', '语音朗读', '台词与任务通知的语音'),
-      h('div', { className: 'ws-row' },
-        h('div', { className: 'ws-labelbox' },
-          h('div', { className: 'ws-label' }, '浏览器宠大小'),
-          h('div', { className: 'ws-hint' }, '60% ~ 120%')),
-        h('input', { className: 'ws-range', type: 'range', min: '0.6', max: '1.2', step: '0.05', value: cfg.petScale, onChange: function (e) { save({ petScale: parseFloat(e.target.value) }) } }),
-        h('span', { className: 'ws-scale' }, Math.round(cfg.petScale * 100) + '%')),
-      sw('autoLaunchPet', '自动拉起桌面宠', 'DSH 启动时自动出现桌面宠(默认关,靠木牌「拉起桌宠」)'),
-      sw('lowBalanceAlert', '低余额提醒', '余额低于 5 元时提醒充值'),
-      sw('dndEnabled', '免打扰时段', '时段内静音、不弹气泡;审批与「需要协助」仍会提醒'),
-      h('div', { className: 'ws-row' },
-        h('div', { className: 'ws-labelbox' },
-          h('div', { className: 'ws-label' }, '免打扰时间'),
-          h('div', { className: 'ws-hint' }, '支持跨午夜(如 22:00 – 09:00)')),
-        h('input', { className: 'ws-select', type: 'time', value: cfg.dndStart, onChange: function (e) { save({ dndStart: e.target.value }) } }),
-        h('span', { className: 'ws-scale' }, '–'),
-        h('input', { className: 'ws-select', type: 'time', value: cfg.dndEnd, onChange: function (e) { save({ dndEnd: e.target.value }) } })),
-      note ? h('div', { className: 'ws-row' }, h('div', { className: 'ws-note' }, note)) : null,
-    ]
-    return h('div', { className: open ? 'ws-card open' : 'ws-card' },
-      h('button', { type: 'button', className: 'ws-header', 'aria-expanded': open, onClick: function () { setOpen(!open) } },
-        h('div', { className: 'ws-headtext' },
-          h('div', { className: 'ws-name' }, '鲸鱼娘桌宠', h('span', { className: 'ws-version' }, 'v1.0.3')),
-          h('div', { className: 'ws-desc' }, '台词、语音、大小与桌面宠拉起行为')),
-        h('span', { className: open ? 'ws-chevron open' : 'ws-chevron' },
-          h('svg', { viewBox: '0 0 14 14', width: 14, height: 14, style: { display: 'block' } },
-            h('path', { d: 'M3 5.5 7 9.5 11 5.5', fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' })))),
-      open ? h('div', { className: 'ws-body' }, rows) : null)
+
+    var bodyEl = null
+
+    function renderAll() {
+      node.textContent = ''
+      node.className = S.open ? 'ws-card open' : 'ws-card'
+      var header = make('button', 'ws-header')
+      header.type = 'button'
+      header.setAttribute('aria-expanded', S.open ? 'true' : 'false')
+      header.addEventListener('click', function () {
+        S.open = !S.open
+        renderAll()
+      })
+      var ht = make('div', 'ws-headtext')
+      var nm = make('div', 'ws-name', '鲸鱼娘桌宠')
+      nm.appendChild(make('span', 'ws-version', 'v1.0.4'))
+      ht.appendChild(nm)
+      ht.appendChild(make('div', 'ws-desc', '台词、语音、大小与桌面宠拉起行为'))
+      header.appendChild(ht)
+      var cv = make('span', S.open ? 'ws-chevron open' : 'ws-chevron')
+      cv.appendChild(chevron())
+      header.appendChild(cv)
+      node.appendChild(header)
+      if (S.open) {
+        bodyEl = make('div', 'ws-body')
+        node.appendChild(bodyEl)
+        renderBody()
+      } else {
+        bodyEl = null
+      }
+    }
+
+    // 兜底:宿主重渲染可能清掉手动插入的子 DOM(卡突然空白)→ 被清空且仍挂载时自动重建
+    if (typeof MutationObserver !== 'undefined') {
+      var mo = new MutationObserver(function () {
+        if (!node.isConnected) { mo.disconnect(); return }
+        if (node.childNodes.length === 0) renderAll()
+      })
+      mo.observe(node, { childList: true })
+    }
+
+    renderAll()
+    load()
   }
   function registerSettingsCard(ctx) {
-    var slots = ctx && typeof ctx.get === 'function' ? ctx.get('slots') : undefined
-    if (!slots || typeof slots.inject !== 'function' || typeof slots.register !== 'function') return
+    // v4:声明式 inject 优先(ctx.slots),ctx.get 兜底;拿不到 slots 时 console.warn,绝不再静默。
+    var slots = ctx && ctx.slots
+    if (!slots && ctx && typeof ctx.get === 'function') {
+      try { slots = ctx.get('slots') } catch (e) { slots = undefined }
+    }
+    if (!slots || typeof slots.inject !== 'function' || typeof slots.register !== 'function') {
+      if (typeof console !== 'undefined' && console.warn) console.warn('[whale-pet] settings card not registered: slots service unavailable (ctx.slots/ctx.get both missed)')
+      return
+    }
     try {
       var styleEl = document.createElement('style')
       styleEl.textContent = SETTINGS_CSS
       document.head.appendChild(styleEl)
       slots.inject('settings.plugin.item', function () {
         return slots.register(
-          { name: 'settings.plugin.item', id: 'dsh-whale-pet-plugin', order: 40, label: '鲸鱼娘桌宠' },
-          function () { return React.createElement(SettingsCard, null) }
+          { name: 'settings.plugin.item', id: 'dsh-whale-pet-plugin', order: 40, label: '鲸鱼娘桌宠', key: 'dsh-whale-pet' },
+          function () { return makeSettingsCardElement() }
         )
       })
+      // 探针:注册后自查 slot 条目表,一次钉死「注册到底成没成」(装包复验时看 console)
+      if (typeof console !== 'undefined' && console.log) {
+        try {
+          var entries = typeof slots.entries === 'function' ? slots.entries('settings.plugin.item') : null
+          var ours = false
+          var n = 0
+          if (entries && typeof entries.forEach === 'function') {
+            entries.forEach(function (e) { n++; if (e && e.options && e.options.id === 'dsh-whale-pet-plugin') ours = true })
+          }
+          console.log('[whale-pet] settings card registered; slot entries = ' + n + ', ours present = ' + ours)
+        } catch (e) { console.log('[whale-pet] settings card registered (entries probe unavailable)') }
+      }
     } catch (e) { /* 注册失败绝不让 GUI 启动崩掉 */ }
   }
 
@@ -713,7 +906,7 @@ window.__ModuleLoader__.load({ id: "dsh-whale-pet-plugin", factory: function (re
 
   function apply(ctx) {
     mount()
-    if (React !== null) registerSettingsCard(ctx)
+    registerSettingsCard(ctx) // v3:零 React 依赖,无条件注册(不再因 react 缺失而静默消失)
     // 测试钩子:渲染测试页可通过 window.__whale 直接触发摸头/通知,验证贴纸/爱心/台词/通知视图
     if (typeof window !== 'undefined' && window.__WHALE_TEST__ === true) {
       window.__whale = {
@@ -724,6 +917,6 @@ window.__ModuleLoader__.load({ id: "dsh-whale-pet-plugin", factory: function (re
     }
   }
   exports.apply = apply
-  exports.inject = []
+  exports.inject = ['slots'] // v4:声明式注入,与官方设置卡插件同款姿势;ctx.slots 直读、ctx.get 兜底
   return module.exports
 } })

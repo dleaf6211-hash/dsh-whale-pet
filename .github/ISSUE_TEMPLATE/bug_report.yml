@@ -1,0 +1,65 @@
+name: 🐛 Bug 报告
+description: 桌宠出问题了?请按模板填写,方便我们快速定位。
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈!填写前请确认:
+        - 已搜索 [Issues](https://github.com/dleaf6211-hash/dsh-whale-pet/issues) 确认没有重复;
+        - 尽量填全以下信息,尤其是 **DSH 宿主版本**——很多问题与宿主版本强相关。
+  - type: input
+    id: dsh-version
+    attributes:
+      label: DSH 宿主版本
+      description: 在设置/关于页查看,或终端运行 `npm ls @deepseek-ai/dsh`
+      placeholder: 例:0.1.2-rc.1
+    validations:
+      required: true
+  - type: input
+    id: plugin-version
+    attributes:
+      label: 桌宠插件版本
+      description: 在插件设置面板或 `npm ls dsh-whale-pet-plugin` 查看
+      placeholder: 例:1.0.3
+    validations:
+      required: true
+  - type: dropdown
+    id: scenario
+    attributes:
+      label: 涉及场景(可多选)
+      multiple: true
+      options:
+        - 审批 / 需要协助提示
+        - 酒馆(tavern)使用中
+        - 多会话 / 切换会话
+        - 木牌(消耗 / 余额显示)
+        - 语音 / 台词 / 摸头
+        - 桌面宠窗口
+        - 任务完成等通知
+        - 其他
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 打开……
+        2. 进行……
+        3. 观察到……
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为 vs 实际行为
+      placeholder: 期望:……;实际:……
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志 / 截图(可选)
+      description: 插件面板报错、控制台输出、截图都可以贴,越全定位越快
