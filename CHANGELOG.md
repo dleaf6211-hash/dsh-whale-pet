@@ -29,6 +29,7 @@
 - **升级残留旧实例**:插件升级后整页不刷新会出现两只浏览器宠/两个桌面宠窗口——挂载前清理残留根节点、拉起前先收旧实例(模式根治,不再靠 FAQ 手动收拾)
 - **cordis peer 区间放宽**:`>=4.0.1 <5.0.0-0`,与新宿主实装版本对齐,消除新用户安装警告
 - **设置面板兼容(0.1.1 + 0.1.5,双机实锤两层根因)**:①0.1.5 的 `settings.plugin.item` 新契约(keyed+namespace 派发)下,宿主侧向 settingsScope 认领 `dsh-whale-pet` 命名空间(非空 schema、零持久化副作用,设置仍走 whale-settings.json),客户端注册补 `key` 并保留 id/order/label —— 一份注册通吃双宿主;②**设置卡零 React 依赖化**:旧版卡片依赖裸 `require('react')` 且拿不到就静默跳过 —— 0.1.1/0.1.5 的模块表都不保证提供 react(boot 图无 react 行、window.React 无人设置),卡片会无声消失(公司机 9/3 宿主重装后中招、家机 0.1.5 升级后中招)。现改为手造 `Symbol.for('react.element')` 根元素 + ref 回调挂原生 DOM,不再 require React、不用 hooks;③**客户端注册改声明式 `inject:['slots']` + `ctx.slots`**(0.1.5 上裸 `ctx.get('slots')` 会落空、注册根本没跑——三轮复验坐实,此为根治点);宿主侧补 `ctx.root` 兜底认领 + describe 探针两形状修正。v4 双机装包复验通过,设置卡三轮收官
+- **发布修正(09-16 补发)**:发布树回流**接线产物**(`lib/index.js` 96d4066cc23e + 新增 `lib/pet-views.js` d8ffcef1f87a)——首发 1.0.4 的桌宠模板缺效率页排版(发布树未合入 pet-views),本次重发与双机验收产物逐字一致;流程铁律:发版前接线产物必须回流发布树再 publish
 
 ### 🙏 致谢
 
