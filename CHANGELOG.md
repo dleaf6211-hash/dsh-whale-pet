@@ -15,8 +15,9 @@
   `interrupted` / `aborted` / `blocked` 一律静默（不弹完成也不弹失败）;`completed` 正常宣布,`max-tokens` 视为有产出照常。
 - **同轮多次 error 重复弹失败**:失败通知原设计「每条都保留」,一轮内重试多次会连弹多条「任务失败」。
   修复:同一忙碌周期只弹第一条失败,后续 error 静默（标记已消费）。
-- **maintenance 阶段（总结流等收尾工作）误判收工**:宿主把 maintenance 阶段也报成 `idle`,旧逻辑会提前宣布完成。
-  修复:idle 事件若 phase 仍是 `maintenance`,继续挂账,等真正的 `phase=idle` 再宣布（与既有 llm/stream 取消兜底双保险）。
+- **maintenance 守卫（初稿）经 review 移除**:初稿试图在 idle 分支按 `phase=maintenance` 挂账,但宿主把 maintenance
+  派生为 `idle` 且进出 maintenance 都不发 `agent/status`（只在状态变化时发）⇒ 守卫永不触发
+  （妹妹 review 指出、姐姐核实宿主源码确认）。总结流的防提前弹由既有 `llm/stream` 取消兜底定时器覆盖,逻辑不变。
 
 ## [1.0.4] - 2026-09-14
 
