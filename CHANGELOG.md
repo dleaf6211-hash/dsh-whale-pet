@@ -2,6 +2,17 @@
 
 本文件记录鲸鱼娘桌宠（dsh-whale-pet-plugin）各版本的更新日志。
 
+## [1.0.6-up] - 2026-10-20
+
+### 🐛 修复（Issue #2 —— 首条真实用户反馈,感谢 @qiuhenshan 的定位与补丁骨架）
+
+- **余额取 key 多来源**:原只认 `~/.dsh/.credentials.yaml` 里的 `sk-`,用环境变量配 key 的用户余额恒空。
+  现按优先级 `credentials` → 环境变量（`DEEPSEEK_API_KEY` / `DEEPSEEK_KEY` / `DS_API_KEY`）→
+  `~/.whale-pet/api-key.txt` 取 key,失败原因带 `tried` 路径诊断（木牌不再只有 `no-key` 三个字）。
+- **JSON 读取剥 BOM**:`readJsonIfExists` 与酒馆状态读取统一 `.replace(/^\uFEFF/, '')` ——
+  修复 PS5.1 / 部分编辑器写出的配置文件（如 `whale-settings.json`）带 BOM 时设置静默失效的问题。
+- **门禁**:双机共用冒烟脚本 `whale-issue2-smoke.mjs` **7/7 全绿**;宿主/桌面宠两侧同款代码均已修。
+
 ## [1.0.6] - 2026-10-07
 
 ### 🐛 修复（发布事故）
