@@ -2,6 +2,16 @@
 
 本文件记录鲸鱼娘桌宠（dsh-whale-pet-plugin）各版本的更新日志。
 
+## [1.0.7-up] - 2026-10-26
+
+### 🧩 修复：两宿主各养一只桌宠（方案 D 遗留）
+
+- **实例隔离**：Mutex 名与窗口标题按 `dataDir` 哈希加后缀（`WhalePetMutex-<hash8>` / `WhalePet-<hash8>`），
+  同一台机器上网页端（`~/.dsh`）与客户端（`~/.dsh-jiejie`）可各自拉起一只桌宠，不再争同一个全局 Mutex；
+- **杀进程范围收窄**：`killDesktopPet` 由全局 `taskkill`（按窗口标题/脚本名）改为**只杀自己 `run\whale-pet.ps1` 那只**，
+  两端互不踢窗；
+- **兼容**：`buildPetScript` 新增可选第 6 参数 `tag`；不传时回退旧行为（单实例），旧安装不受影响。
+
 ## [1.0.6-up] - 2026-10-20
 
 ### 🐛 修复（Issue #2 —— 首条真实用户反馈,感谢 @qiuhenshan 的定位与补丁骨架）
